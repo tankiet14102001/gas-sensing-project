@@ -1,17 +1,6 @@
-/**************************************************************************/
-/*!
-    @brief  Setups the I2C interface and hardware and checks for communication.
-    @param  addr Optional I2C address the sensor can be found on. Default is
-   0x5A
-    @param theWire Optional pointer to I2C interface, &Wire is used by default
-    @returns True if device is set up, false on any failure
-*/
-/**************************************************************************/
-
 /***************************************************************************
     @brief Define libraries
  ***************************************************************************/
-
 #include <Arduino.h>
 
 #include <Wire.h>
@@ -19,28 +8,45 @@
 
 #include "Adafruit_CCS811.h"
 #include <RTClib.h>
-#include <sd.h>
+#include <SD.h>
 
 /***************************************************************************
     @brief Define constants
  ***************************************************************************/
+#define SERIAL_BAUDRATE             115200
 
-#define sd_CS 5
-#define sd_chip_select 5
+/**************************************************************************/
+/*!
+    @brief  Choose time setting mode.
+    @param  SET_COMPUTER_TIME Set time base on real-time on your PC
+    @param  SET_MANUAL_TIME   Set time by your own wanted time
+    @param  FINISH_TIME_SETTING  Use this definition to upload the firmware to your MCU after successfully set the time.
+*/
+/**************************************************************************/
+#define FINISH_TIME_SETTING
+
+#define SD_CHIP_SELECT_PIN          5
+#define NO2_PIN                     33
+#define CH4_PIN                     34
+
+/***************************************************************************
+    @brief  Set sampling rates in seconds
+ ***************************************************************************/
+#define SAMPLING_RATE_1             10
+#define SAMPLING_RATE_2             15
+#define SAMPLING_RATE_3             30
 
 /***************************************************************************
     @brief Define objects
- ***************************************************************************/
- 
+ ***************************************************************************/ 
 Adafruit_CCS811 ccs;
 RTC_DS3231 rtc;  // rtc module
-File dataFile, dataFile1, dataFile2, dataFile3;  // sd module
+File dataFile, datafile_1, datafile_2, datafile_3;  // sd module
 
 /***************************************************************************
     @brief Define parameters
  ***************************************************************************/
-
-unsigned long timer1;
+unsigned long timer_1 = 0;
 
 char file_name[32];
 char file_name_1[32];
@@ -59,7 +65,7 @@ struct
   int hour;
   int minute;
   int second;
-} now_data;
+} rtc_data;
 
 struct
 {
@@ -69,209 +75,168 @@ struct
   float ch4_data;
 } sensors_data;
 
-int no2Pin = 33;
-int ch4Pin = 34;
-float no2Value, ch4Value;
+// int no2_pin = 33;
+// int ch4_pin = 34;
+// float no2_value, ch4_value;
 
 /***************************************************************************
     @brief Functions declarations
  ***************************************************************************/
-
 void rtc_init();
-void sd_init();
+void rtc_set_time();
 void get_file_name();
-void sd_make_file();
 
+void sd_init();
+void sd_make_file();
 void sd_log_data();
 void sd_log_data_1();
 void sd_log_data_2();
 void sd_log_data_3();
 
 void get_sensors_data();
+void print_sensors_data();
+
+void counter_increment();
 
 /***************************************************************************
     @brief Applications
- ***************************************************************************/
- 
+ ***************************************************************************/ 
 void setup() {
-  Serial.begin(115200);
-  timer1 = millis();
- 
-  Serial.println("CCS811 test");
+  Serial.begin(SERIAL_BAUDRATE);
+  timer_1 = millis();
  
   if(!ccs.begin()){
     Serial.println("Failed to start sensor! Please check your wiring.");
     while(1);
-  }
- 
-  // Wait for the sensor to be ready
-  while(!ccs.available());
+  }  
+  while(!ccs.available());  // Wait for the sensor to be ready
   rtc_init();
   sd_init();
-  //get_file_name();
-  //sd_make_file();
 }
  
 void loop() {
-  if ( (unsigned long) (millis() - timer1) > 1000)
+  if ( (unsigned long) (millis() - timer_1) > 1000)
   {
-    counter_1++;
-    counter_2++;
-    counter_3++;
+    counter_increment();    
+    rtc_set_time();
     DateTime now = rtc.now();
-    now_data.day = now.day();
-    now_data.month = now.month();
-    now_data.year = now.year();
-    now_data.hour = now.hour();
-    now_data.minute = now.minute();
-    now_data.second = now.second();
-
-    sd_make_file();
-
-    if(counter_1 >= 10)
+    rtc_data.day = now.day();
+    rtc_data.month = now.month();
+    rtc_data.year = now.year();
+    rtc_data.hour = now.hour();
+    rtc_data.minute = now.minute();
+    rtc_data.second = now.second();    
+    get_file_name();
+    sd_make_file();    
+    get_sensors_data();
+    if(counter_1 >= SAMPLING_RATE_1)
     {
       sd_log_data_1();
       counter_1 = 0;
     }
-    if(counter_2 >= 15)
+    if(counter_2 >= SAMPLING_RATE_2)
     {
       sd_log_data_2();
       counter_2 = 0;
     }
-    if(counter_3 >= 30)
+    if(counter_3 >= SAMPLING_RATE_3)
     {
       sd_log_data_3();
       counter_3 = 0;
     }
-    get_file_name();
-    get_sensors_data();
-    if(ccs.available()){
-      if(!ccs.readData()){
-        Serial.print("CO2: ");
-        Serial.print(sensors_data.co2_data);
-        Serial.print("ppm, TVOC: ");
-        Serial.print(sensors_data.tvoc_data);
-        Serial.print("\tNO2: ");
-        Serial.print(sensors_data.no2_data);
-        Serial.print("\tCH4: ");
-        Serial.println(sensors_data.ch4_data);
-      }
-      else{
+    if(ccs.available()) {
+      if(!ccs.readData())
+        print_sensors_data();
+      else {
         Serial.println("ERROR!");
         //while(1);
       }
     }
-    Serial.print("CO2: ");
-    Serial.print(sensors_data.co2_data);
-    Serial.print("ppm, TVOC: ");
-    Serial.print(sensors_data.tvoc_data);
-    Serial.print("\tNO2: ");
-    Serial.print(sensors_data.no2_data);
-    Serial.print("\tCH4: ");
-    Serial.println(sensors_data.ch4_data);
-    Serial.println(counter_1);
-    Serial.println(counter_2);
-    Serial.println(counter_3);
-    //sd_log_data();
-    timer1 = millis();
+    print_sensors_data();
+    timer_1 = millis();
   }
 }
 
+/***************************************************************************
+    @brief  RTC functions definitions
+ ***************************************************************************/
 void rtc_init()
 {
-  //DateTime now = rtc.now();
   rtc.begin();
   if (!rtc.begin())
-  {
     Serial.println("RTC not found!");
-  }
   else
-  {
     Serial.println("RTC initialized!");
-  }
-  //DateTime now = rtc.now();
-  //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  //Serial.println("Time updated!");
 }
 void rtc_set_time()
 {
-  //DateTime now = rtc.now();
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  
+  #ifdef SET_COMPUTER_TIME
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  #endif
+  #ifdef SET_MANUAL_TIME
+    rtc.set();
+  #endif
+  #ifdef FINISH_TIME_SETTING
+    // do nothing
+  #endif
   Serial.println("Time updated!");
 }
+
+/***************************************************************************
+    @brief  SD functions definitions
+ ***************************************************************************/
 void sd_init()
 {
-  if (!sd.begin(sd_CS))
+  if (!SD.begin(SD_CHIP_SELECT_PIN))
   {
-    Serial.println("sd card not found.");
-    //return;
+    Serial.println("SD card not found.");
+    // while(1);
   }
-  Serial.println("sd init successful.");
-  //sd_make_file();
+  Serial.println("SD init successful.");
 }
-
 void get_file_name()
 {
-  //rtc_get_time();
-  //sprintf(file_name, "/%02d%02d.txt", now_data.hour, now_data.minute);
-  sprintf(file_name, "/%04d%02d%02d.csv", now_data.year, now_data.month, now_data.day);
-  sprintf(file_name_1, "/%04d%02d%02d_1.csv", now_data.year, now_data.month, now_data.day);
-  sprintf(file_name_2, "/%04d%02d%02d_2.csv", now_data.year, now_data.month, now_data.day);
-  sprintf(file_name_3, "/%04d%02d%02d_3.csv", now_data.year, now_data.month, now_data.day);
-  Serial.print("file name: ");
-  Serial.println(file_name);
+  // sprintf(file_name, "/%04d%02d%02d.csv", rtc_data.year, rtc_data.month, rtc_data.day);
+  sprintf(file_name_1, "/%04d%02d%02d_sampling_rate_1.csv", rtc_data.year, rtc_data.month, rtc_data.day);
+  sprintf(file_name_2, "/%04d%02d%02d_sampling_rate_2.csv", rtc_data.year, rtc_data.month, rtc_data.day);
+  sprintf(file_name_3, "/%04d%02d%02d_sampling_rate_3.csv", rtc_data.year, rtc_data.month, rtc_data.day);
 }
-
 void sd_make_file()
 {
-  //get_file_name();
-  if (! sd.exists(file_name))
+  if (! SD.exists(file_name))
   {
-    File dataFile = sd.open(file_name, FILE_WRITE);
+    File dataFile = SD.open(file_name, FILE_WRITE);
     dataFile.print("CO2,TVOC,NO2,CH4\n");
     dataFile.close();
   }
-  else if (! sd.exists(file_name_1))
+  else if (! SD.exists(file_name_1))
   {
-    File dataFile1 = sd.open(file_name_1, FILE_WRITE);
-    dataFile1.print("CO2,TVOC,NO2,CH4\n");
-    dataFile1.close();
+    File datafile_1 = SD.open(file_name_1, FILE_WRITE);
+    datafile_1.print("CO2,TVOC,NO2,CH4\n");
+    datafile_1.close();
   }
-  else if (! sd.exists(file_name_2))
+  else if (! SD.exists(file_name_2))
   {
-    File dataFile2 = sd.open(file_name_2, FILE_WRITE);
-    dataFile2.print("CO2,TVOC,NO2,CH4\n");
-    dataFile2.close();
+    File datafile_2 = SD.open(file_name_2, FILE_WRITE);
+    datafile_2.print("CO2,TVOC,NO2,CH4\n");
+    datafile_2.close();
   }
-  else if (! sd.exists(file_name_3))
+  else if (! SD.exists(file_name_3))
   {
-    File dataFile3 = sd.open(file_name_3, FILE_WRITE);
-    dataFile3.print("CO2,TVOC,NO2,CH4\n");
-    dataFile3.close();
+    File datafile_3 = SD.open(file_name_3, FILE_WRITE);
+    datafile_3.print("CO2,TVOC,NO2,CH4\n");
+    datafile_3.close();
   }
   else
   {
     Serial.println("file for today existed!");
   }
 }
-
 void sd_log_data()
 {
-  File dataFile = sd.open(file_name, FILE_APPEND);
+  File dataFile = SD.open(file_name, FILE_APPEND);
   if (dataFile)
   {
-    // char buf[32];
-    // sprintf(buf, "%2d/%2d/%4d  %2d:%2d:%2d: ", now_data.day, now_data.month, now_data.year, now_data.hour, now_data.minute, now_data.second);
-
-    // dataFile.print(buf);
-    // dataFile.print("\t");
-
-    // dataFile.print(dataPM1_0);
-    // dataFile.print("\t");
-    // dataFile.print(dataPM2_5);
-    // dataFile.print("\t");
-    // dataFile.print(dataPM10);
-    // dataFile.print("\n");
     dataFile.print(sensors_data.co2_data);
     dataFile.print(",");
     dataFile.print(sensors_data.tvoc_data);
@@ -287,118 +252,98 @@ void sd_log_data()
   {
     Serial.println("writing failed!!");
   }
-  //return;
 }
-
 void sd_log_data_1()
 {
-  File dataFile1 = sd.open(file_name_1, FILE_APPEND);
-  if (dataFile1)
+  File datafile_1 = SD.open(file_name_1, FILE_APPEND);
+  if (datafile_1)
   {
-    // char buf[32];
-    // sprintf(buf, "%2d/%2d/%4d  %2d:%2d:%2d: ", now_data.day, now_data.month, now_data.year, now_data.hour, now_data.minute, now_data.second);
+    datafile_1.print(sensors_data.co2_data);
+    datafile_1.print(",");
+    datafile_1.print(sensors_data.tvoc_data);
+    datafile_1.print(",");
+    datafile_1.print(sensors_data.no2_data);
+    datafile_1.print(",");
+    datafile_1.println(sensors_data.ch4_data);
 
-    // dataFile.print(buf);
-    // dataFile.print("\t");
-
-    // dataFile.print(dataPM1_0);
-    // dataFile.print("\t");
-    // dataFile.print(dataPM2_5);
-    // dataFile.print("\t");
-    // dataFile.print(dataPM10);
-    // dataFile.print("\n");
-    dataFile1.print(sensors_data.co2_data);
-    dataFile1.print(",");
-    dataFile1.print(sensors_data.tvoc_data);
-    dataFile1.print(",");
-    dataFile1.print(sensors_data.no2_data);
-    dataFile1.print(",");
-    dataFile1.println(sensors_data.ch4_data);
-
-    dataFile1.close();
+    datafile_1.close();
     Serial.println("print 1!");
   }
   else
   {
     Serial.println("writing failed!!");
   }
-  //return;
 }
-
 void sd_log_data_2()
 {
-  File dataFile2 = sd.open(file_name_2, FILE_APPEND);
-  if (dataFile2)
+  File datafile_2 = SD.open(file_name_2, FILE_APPEND);
+  if (datafile_2)
   {
-    // char buf[32];
-    // sprintf(buf, "%2d/%2d/%4d  %2d:%2d:%2d: ", now_data.day, now_data.month, now_data.year, now_data.hour, now_data.minute, now_data.second);
+    datafile_2.print(sensors_data.co2_data);
+    datafile_2.print(",");
+    datafile_2.print(sensors_data.tvoc_data);
+    datafile_2.print(",");
+    datafile_2.print(sensors_data.no2_data);
+    datafile_2.print(",");
+    datafile_2.println(sensors_data.ch4_data);
 
-    // dataFile.print(buf);
-    // dataFile.print("\t");
-
-    // dataFile.print(dataPM1_0);
-    // dataFile.print("\t");
-    // dataFile.print(dataPM2_5);
-    // dataFile.print("\t");
-    // dataFile.print(dataPM10);
-    // dataFile.print("\n");
-    dataFile2.print(sensors_data.co2_data);
-    dataFile2.print(",");
-    dataFile2.print(sensors_data.tvoc_data);
-    dataFile2.print(",");
-    dataFile2.print(sensors_data.no2_data);
-    dataFile2.print(",");
-    dataFile2.println(sensors_data.ch4_data);
-
-    dataFile2.close();
+    datafile_2.close();
     Serial.println("print 2!");
   }
   else
   {
     Serial.println("writing failed!!");
   }
-  //return;
 }
-
 void sd_log_data_3()
 {
-  File dataFile3 = sd.open(file_name_3, FILE_APPEND);
-  if (dataFile3)
+  File datafile_3 = SD.open(file_name_3, FILE_APPEND);
+  if (datafile_3)
   {
-    // char buf[32];
-    // sprintf(buf, "%2d/%2d/%4d  %2d:%2d:%2d: ", now_data.day, now_data.month, now_data.year, now_data.hour, now_data.minute, now_data.second);
+    datafile_3.print(sensors_data.co2_data);
+    datafile_3.print(",");
+    datafile_3.print(sensors_data.tvoc_data);
+    datafile_3.print(",");
+    datafile_3.print(sensors_data.no2_data);
+    datafile_3.print(",");
+    datafile_3.println(sensors_data.ch4_data);
 
-    // dataFile.print(buf);
-    // dataFile.print("\t");
-
-    // dataFile.print(dataPM1_0);
-    // dataFile.print("\t");
-    // dataFile.print(dataPM2_5);
-    // dataFile.print("\t");
-    // dataFile.print(dataPM10);
-    // dataFile.print("\n");
-    dataFile3.print(sensors_data.co2_data);
-    dataFile3.print(",");
-    dataFile3.print(sensors_data.tvoc_data);
-    dataFile3.print(",");
-    dataFile3.print(sensors_data.no2_data);
-    dataFile3.print(",");
-    dataFile3.println(sensors_data.ch4_data);
-
-    dataFile3.close();
+    datafile_3.close();
     Serial.println("print 3!");
   }
   else
   {
     Serial.println("writing failed!!");
   }
-  //return;
 }
 
+/***************************************************************************
+    @brief  Supporting functions definitions
+ ***************************************************************************/
+void counter_increment()
+{
+  counter_1++;
+  counter_2++;
+  counter_3++;
+}
 void get_sensors_data()
 {
   sensors_data.co2_data = ccs.geteCO2();
   sensors_data.tvoc_data = ccs.getTVOC();
-  sensors_data.no2_data = analogRead(no2Pin);
-  sensors_data.ch4_data = analogRead(ch4Pin);
+  sensors_data.no2_data = analogRead(NO2_PIN);
+  sensors_data.ch4_data = analogRead(CH4_PIN);
+}
+void print_sensors_data()
+{
+  Serial.print("CO2: ");
+  Serial.print(sensors_data.co2_data);
+  Serial.print("ppm, TVOC: ");
+  Serial.print(sensors_data.tvoc_data);
+  Serial.print("\tNO2: ");
+  Serial.print(sensors_data.no2_data);
+  Serial.print("\tCH4: ");
+  Serial.println(sensors_data.ch4_data);
+  Serial.println(counter_1);
+  Serial.println(counter_2);
+  Serial.println(counter_3);
 }
