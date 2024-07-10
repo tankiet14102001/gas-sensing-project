@@ -1,16 +1,45 @@
+/**************************************************************************/
+/*!
+    @brief  Setups the I2C interface and hardware and checks for communication.
+    @param  addr Optional I2C address the sensor can be found on. Default is
+   0x5A
+    @param theWire Optional pointer to I2C interface, &Wire is used by default
+    @returns True if device is set up, false on any failure
+*/
+/**************************************************************************/
+
+/***************************************************************************
+    @brief Define libraries
+ ***************************************************************************/
+
 #include <Arduino.h>
-#include <SPI.h>
-#include "Adafruit_CCS811.h"
+
 #include <Wire.h>
+#include <SPI.h>
 
+#include "Adafruit_CCS811.h"
 #include <RTClib.h>
-#include <SD.h>
+#include <sd.h>
 
-#define SD_CS 5
+/***************************************************************************
+    @brief Define constants
+ ***************************************************************************/
+
+#define sd_CS 5
+#define sd_chip_select 5
+
+/***************************************************************************
+    @brief Define objects
+ ***************************************************************************/
  
 Adafruit_CCS811 ccs;
 RTC_DS3231 rtc;  // rtc module
-File dataFile, dataFile1, dataFile2, dataFile3;  // SD module
+File dataFile, dataFile1, dataFile2, dataFile3;  // sd module
+
+/***************************************************************************
+    @brief Define parameters
+ ***************************************************************************/
+
 unsigned long timer1;
 
 char file_name[32];
@@ -18,9 +47,9 @@ char file_name_1[32];
 char file_name_2[32];
 char file_name_3[32];
 
-unsigned long counter_1 = 0;
-unsigned long counter_2 = 0;
-unsigned long counter_3 = 0;
+uint16_t counter_1 = 0;
+uint16_t counter_2 = 0;
+uint16_t counter_3 = 0;
 
 struct
 {
@@ -44,18 +73,25 @@ int no2Pin = 33;
 int ch4Pin = 34;
 float no2Value, ch4Value;
 
+/***************************************************************************
+    @brief Functions declarations
+ ***************************************************************************/
+
 void rtc_init();
 void sd_init();
 void get_file_name();
-void SD_make_file();
+void sd_make_file();
 
-void SD_log_data();
-void SD_log_data_1();
-void SD_log_data_2();
-void SD_log_data_3();
+void sd_log_data();
+void sd_log_data_1();
+void sd_log_data_2();
+void sd_log_data_3();
 
 void get_sensors_data();
 
+/***************************************************************************
+    @brief Applications
+ ***************************************************************************/
  
 void setup() {
   Serial.begin(115200);
@@ -73,7 +109,7 @@ void setup() {
   rtc_init();
   sd_init();
   //get_file_name();
-  //SD_make_file();
+  //sd_make_file();
 }
  
 void loop() {
@@ -90,21 +126,21 @@ void loop() {
     now_data.minute = now.minute();
     now_data.second = now.second();
 
-    SD_make_file();
+    sd_make_file();
 
     if(counter_1 >= 10)
     {
-      SD_log_data_1();
+      sd_log_data_1();
       counter_1 = 0;
     }
     if(counter_2 >= 15)
     {
-      SD_log_data_2();
+      sd_log_data_2();
       counter_2 = 0;
     }
     if(counter_3 >= 30)
     {
-      SD_log_data_3();
+      sd_log_data_3();
       counter_3 = 0;
     }
     get_file_name();
@@ -136,7 +172,7 @@ void loop() {
     Serial.println(counter_1);
     Serial.println(counter_2);
     Serial.println(counter_3);
-    //SD_log_data();
+    //sd_log_data();
     timer1 = millis();
   }
 }
@@ -165,13 +201,13 @@ void rtc_set_time()
 }
 void sd_init()
 {
-  if (!SD.begin(SD_CS))
+  if (!sd.begin(sd_CS))
   {
-    Serial.println("SD card not found.");
+    Serial.println("sd card not found.");
     //return;
   }
-  Serial.println("SD init successful.");
-  //SD_make_file();
+  Serial.println("sd init successful.");
+  //sd_make_file();
 }
 
 void get_file_name()
@@ -186,30 +222,30 @@ void get_file_name()
   Serial.println(file_name);
 }
 
-void SD_make_file()
+void sd_make_file()
 {
   //get_file_name();
-  if (! SD.exists(file_name))
+  if (! sd.exists(file_name))
   {
-    File dataFile = SD.open(file_name, FILE_WRITE);
+    File dataFile = sd.open(file_name, FILE_WRITE);
     dataFile.print("CO2,TVOC,NO2,CH4\n");
     dataFile.close();
   }
-  else if (! SD.exists(file_name_1))
+  else if (! sd.exists(file_name_1))
   {
-    File dataFile1 = SD.open(file_name_1, FILE_WRITE);
+    File dataFile1 = sd.open(file_name_1, FILE_WRITE);
     dataFile1.print("CO2,TVOC,NO2,CH4\n");
     dataFile1.close();
   }
-  else if (! SD.exists(file_name_2))
+  else if (! sd.exists(file_name_2))
   {
-    File dataFile2 = SD.open(file_name_2, FILE_WRITE);
+    File dataFile2 = sd.open(file_name_2, FILE_WRITE);
     dataFile2.print("CO2,TVOC,NO2,CH4\n");
     dataFile2.close();
   }
-  else if (! SD.exists(file_name_3))
+  else if (! sd.exists(file_name_3))
   {
-    File dataFile3 = SD.open(file_name_3, FILE_WRITE);
+    File dataFile3 = sd.open(file_name_3, FILE_WRITE);
     dataFile3.print("CO2,TVOC,NO2,CH4\n");
     dataFile3.close();
   }
@@ -219,9 +255,9 @@ void SD_make_file()
   }
 }
 
-void SD_log_data()
+void sd_log_data()
 {
-  File dataFile = SD.open(file_name, FILE_APPEND);
+  File dataFile = sd.open(file_name, FILE_APPEND);
   if (dataFile)
   {
     // char buf[32];
@@ -254,9 +290,9 @@ void SD_log_data()
   //return;
 }
 
-void SD_log_data_1()
+void sd_log_data_1()
 {
-  File dataFile1 = SD.open(file_name_1, FILE_APPEND);
+  File dataFile1 = sd.open(file_name_1, FILE_APPEND);
   if (dataFile1)
   {
     // char buf[32];
@@ -289,9 +325,9 @@ void SD_log_data_1()
   //return;
 }
 
-void SD_log_data_2()
+void sd_log_data_2()
 {
-  File dataFile2 = SD.open(file_name_2, FILE_APPEND);
+  File dataFile2 = sd.open(file_name_2, FILE_APPEND);
   if (dataFile2)
   {
     // char buf[32];
@@ -324,9 +360,9 @@ void SD_log_data_2()
   //return;
 }
 
-void SD_log_data_3()
+void sd_log_data_3()
 {
-  File dataFile3 = SD.open(file_name_3, FILE_APPEND);
+  File dataFile3 = sd.open(file_name_3, FILE_APPEND);
   if (dataFile3)
   {
     // char buf[32];
