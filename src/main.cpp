@@ -37,6 +37,15 @@
 #define SAMPLING_RATE_3             30
 
 /***************************************************************************
+    @brief  LED definitions to indicate if system is still working
+ ***************************************************************************/
+#define LED_BUILTIN                 2
+#define LED_STATE_ON                (1u)
+#define LED_STATE_OFF               (0u)
+#define LED_INIT_STATE              LED_STATE_OFF
+uint8_t LED_State = LED_INIT_STATE;
+
+/***************************************************************************
     @brief Define objects
  ***************************************************************************/ 
 Adafruit_CCS811 ccs;
@@ -97,6 +106,8 @@ void get_sensors_data();
 void print_sensors_data();
 
 void counter_increment();
+void LED_init();
+void LED_toggle();
 
 /***************************************************************************
     @brief Applications
@@ -112,6 +123,7 @@ void setup() {
   while(!ccs.available());  // Wait for the sensor to be ready
   rtc_init();
   sd_init();
+  LED_init();
 }
  
 void loop() {
@@ -133,6 +145,7 @@ void loop() {
     {
       sd_log_data_1();
       counter_1 = 0;
+      LED_toggle();
     }
     if(counter_2 >= SAMPLING_RATE_2)
     {
@@ -179,7 +192,7 @@ void rtc_set_time()
   #ifdef FINISH_TIME_SETTING
     // do nothing
   #endif
-  Serial.println("Time updated!");
+  //Serial.println("Time updated!");
 }
 
 /***************************************************************************
@@ -190,7 +203,7 @@ void sd_init()
   if (!SD.begin(SD_CHIP_SELECT_PIN))
   {
     Serial.println("SD card not found.");
-    // while(1);
+    while(1);
   }
   Serial.println("SD init successful.");
 }
@@ -229,7 +242,7 @@ void sd_make_file()
   }
   else
   {
-    Serial.println("file for today existed!");
+    //Serial.println("file for today existed!");
   }
 }
 void sd_log_data()
@@ -346,4 +359,18 @@ void print_sensors_data()
   Serial.println(counter_1);
   Serial.println(counter_2);
   Serial.println(counter_3);
+}
+void LED_init() {
+  pinMode(LED_BUILTIN, OUTPUT);
+}
+void LED_toggle() {
+  if ( (LED_State == LED_STATE_OFF) ) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    LED_State = LED_STATE_ON;
+  }
+  else {
+    digitalWrite(LED_BUILTIN, LOW);
+    LED_State = LED_STATE_OFF;
+  }
+  Serial.println("LED toggled!");
 }
